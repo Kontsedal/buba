@@ -15,7 +15,8 @@
     "semantic-release": "semantic-release",
     "test:watch": "jest --watch",
     "test": "jest --coverage",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check": "ts-node ./src/test.ts"
   },
   "repository": {
     "type": "git",
