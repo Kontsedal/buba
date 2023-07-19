@@ -75,10 +75,17 @@ export class Container {
 
   register(name: unknown, dependency: Dependency): void {
     if (dependency.type === DependencyType.VALUE) {
-      this.registry.set(name, dependency.value);
+      this.set(name, dependency.value);
       return;
     }
     this.registerQueue.push([name, dependency]);
+  }
+
+  set(name: unknown, value: unknown): void {
+    if (this.registry.has(name)) {
+      throw new Error(`Dependency ${name as string} already registered`);
+    }
+    this.registry.set(name, value);
   }
   async build(): Promise<void> {
     for (const [name, value] of this.registerQueue) {
@@ -118,13 +125,13 @@ export class Container {
       }
       if (dependency.type === DependencyType.FACTORY) {
         const value = (await dependency.value()) as T;
-        this.registry.set(name, value);
+        this.set(name, value);
         this.resolvingDependencies.set(name, false);
         return value;
       }
       if (dependency.type === DependencyType.CLASS) {
         const value = new dependency.value() as T;
-        this.registry.set(name, value);
+        this.set(name, value);
         this.resolvingDependencies.set(name, false);
         return value;
       }
@@ -155,6 +162,13 @@ export const getContainer = (): Container => {
     throw new Error('Container not found');
   }
   return container;
+};
+
+export const container = (callback: (instance: Container) => unknown): void => {
+  const container = new Container();
+  return container.run(() => {
+    return callback(container);
+  });
 };
 
 export const dependency = <T>(value: unknown): T => {
