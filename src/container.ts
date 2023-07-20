@@ -120,10 +120,19 @@ export const getContainer = (): Container => {
   return container;
 };
 
-export const container = (callback: (instance: Container) => unknown): void => {
+export const container = <T>(
+  callback: (instance: Container) => T | Promise<T>
+): Promise<T> => {
   const container = new Container();
-  return container.run(() => {
-    return callback(container);
+  return new Promise((resolve, reject) => {
+    return container.run(async () => {
+      try {
+        const result = await callback(container);
+        resolve(result);
+      } catch (err) {
+        return reject(err);
+      }
+    });
   });
 };
 
