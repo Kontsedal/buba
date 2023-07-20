@@ -1,10 +1,11 @@
 import { AsyncLocalStorage } from 'async_hooks';
 import { serializeCallTree, serializeDependencyName } from './utils';
 import {
-  DEPENDENCIES,
   Dependency,
-  DependencyType,
+  getDependencies,
   hasDependencies,
+  isDependentClass,
+  isDependentFactory,
 } from './dependency';
 
 const errorPrefix = '@kontsedal/buba error::: ';
@@ -67,31 +68,31 @@ export class Container {
         );
       }
       this.resolvingDependencies.set(name, true);
-      if (typeof dependency.value === 'function') {
-        if (hasDependencies(dependency.value)) {
-          for (const innerDependency of dependency.value[DEPENDENCIES]) {
-            await resolveWithMetadata(innerDependency.value, innerDependency, [
+      if (typeof dependency === 'function') {
+        if (hasDependencies(dependency)) {
+          for (const innerDependency of getDependencies(dependency)) {
+            await resolveWithMetadata(innerDependency, innerDependency, [
               ...callTree,
               name,
             ]);
           }
         }
-        if (dependency.type === DependencyType.FACTORY) {
-          const value = (await dependency.value()) as T;
+        if (isDependentFactory(dependency)) {
+          const value = (await dependency()) as T;
           this.set(name, value);
           this.resolvingDependencies.set(name, false);
           return value;
         }
-        if (dependency.type === DependencyType.CLASS) {
-          const value = new dependency.value() as T;
+        if (isDependentClass(dependency)) {
+          const value = new dependency() as T;
           this.set(name, value);
           this.resolvingDependencies.set(name, false);
           return value;
         }
         throw new Error(
-          `${errorPrefix}Unknown dependency type ${
-            dependency.type
-          }. Call tree: ${serializeCallTree(callTree.concat([name]))}`
+          `${errorPrefix}Unknown dependency type. Call tree: ${serializeCallTree(
+            callTree.concat([name])
+          )}`
         );
       } else {
         throw new Error(
@@ -104,7 +105,7 @@ export class Container {
     return resolveWithMetadata(name, dependency, []);
   }
 
-  run<T>(fn: () => T): void {
+  run<T>(fn: () => T): T {
     return asyncLocalStorage.run(this.id, () => {
       return fn();
     });
@@ -124,15 +125,8 @@ export const container = <T>(
   callback: (instance: Container) => T | Promise<T>
 ): Promise<T> => {
   const container = new Container();
-  return new Promise((resolve, reject) => {
-    return container.run(async () => {
-      try {
-        const result = await callback(container);
-        resolve(result);
-      } catch (err) {
-        return reject(err);
-      }
-    });
+  return container.run(async () => {
+    return callback(container);
   });
 };
 

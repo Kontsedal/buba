@@ -1,2 +1,8 @@
 export * from './container';
-export * from './dependency';
+export {
+  DEPENDENCIES,
+  TYPE,
+  DependencyType,
+  DependentFactory,
+  DependentClass,
+} from './dependency';
