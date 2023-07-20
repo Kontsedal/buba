@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'async_hooks';
 
 const asyncLocalStorage = new AsyncLocalStorage();
-
+const errorPrefix = '@kontsedal/buba error::: ';
 const containerMap = new Map<number, Container>();
 let counter = 0;
 export const DEPENDENCIES = Symbol('DEPENDENCIES');
@@ -66,7 +66,7 @@ export class Container {
   set(name: unknown, value: unknown): void {
     if (this.registry.has(name)) {
       throw new Error(
-        `Dependency ${serializeDependencyName(
+        `${errorPrefix}Dependency ${serializeDependencyName(
           name as string
         )} already registered`
       );
@@ -88,40 +88,58 @@ export class Container {
   }
 
   async resolve<T>(name: unknown, dependency: Dependency): Promise<T> {
-    const existing = this.get<T>(name);
-    if (existing) {
-      return existing;
-    }
-    if (this.resolvingDependencies.get(name)) {
-      throw new Error(
-        `Circular dependency detected for ${serializeDependencyName(
-          name as string
-        )}`
-      );
-    }
-    this.resolvingDependencies.set(name, true);
-    if (typeof dependency.value === 'function') {
-      if (hasDependencies(dependency.value)) {
-        for (const innerDependency of dependency.value[DEPENDENCIES]) {
-          await this.resolve(innerDependency.value, innerDependency);
+    const resolveWithMetadata = async (
+      name: unknown,
+      dependency: Dependency,
+      callTree: any[]
+    ) => {
+      const existing = this.get<T>(name);
+      if (existing) {
+        return existing;
+      }
+      if (this.resolvingDependencies.get(name)) {
+        throw new Error(
+          `${errorPrefix}Circular dependency detected. Call tree: ${serializeCallTree(
+            callTree.concat([name])
+          )}`
+        );
+      }
+      this.resolvingDependencies.set(name, true);
+      if (typeof dependency.value === 'function') {
+        if (hasDependencies(dependency.value)) {
+          for (const innerDependency of dependency.value[DEPENDENCIES]) {
+            await resolveWithMetadata(innerDependency.value, innerDependency, [
+              ...callTree,
+              name,
+            ]);
+          }
         }
+        if (dependency.type === DependencyType.FACTORY) {
+          const value = (await dependency.value()) as T;
+          this.set(name, value);
+          this.resolvingDependencies.set(name, false);
+          return value;
+        }
+        if (dependency.type === DependencyType.CLASS) {
+          const value = new dependency.value() as T;
+          this.set(name, value);
+          this.resolvingDependencies.set(name, false);
+          return value;
+        }
+        throw new Error(
+          `${errorPrefix}Unknown dependency type ${
+            dependency.type
+          }. Call tree: ${serializeCallTree(callTree.concat([name]))}`
+        );
+      } else {
+        throw new Error(
+          `${errorPrefix}Attempt to resolve non registered plain value. Call tree: ${serializeCallTree(
+            callTree.concat([name])
+          )}`
+        );
       }
-      if (dependency.type === DependencyType.FACTORY) {
-        const value = (await dependency.value()) as T;
-        this.set(name, value);
-        this.resolvingDependencies.set(name, false);
-        return value;
-      }
-      if (dependency.type === DependencyType.CLASS) {
-        const value = new dependency.value() as T;
-        this.set(name, value);
-        this.resolvingDependencies.set(name, false);
-        return value;
-      }
-      throw new Error(`Unknown dependency type ${dependency.type}`);
-    } else {
-      throw new Error('Attempt to resolve non registered plain value');
-    }
+    };
+    return resolveWithMetadata(name, dependency, []);
   }
 
   run<T>(fn: () => T): void {
@@ -142,7 +160,7 @@ export const getContainer = (): Container => {
   const containerId = asyncLocalStorage.getStore() as number;
   const container = containerMap.get(containerId);
   if (!container) {
-    throw new Error('Container not found');
+    throw new Error(`${errorPrefix}Container not found`);
   }
   return container;
 };
@@ -158,7 +176,9 @@ export const dependency = <T>(value: unknown): T => {
   const dependency = getContainer().get<T>(value);
   if (!dependency) {
     throw new Error(
-      `Dependency ${serializeDependencyName(value as string)} not found`
+      `${errorPrefix}Dependency ${serializeDependencyName(
+        value as string
+      )} not found`
     );
   }
   return dependency;
@@ -177,4 +197,8 @@ function serializeDependencyName(
     return JSON.stringify(value);
   }
   return (value as string)?.toString() || value;
+}
+
+function serializeCallTree(callTree: any[]) {
+  return callTree.map(serializeDependencyName).join(' -> ');
 }

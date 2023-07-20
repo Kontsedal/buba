@@ -24,9 +24,9 @@
   },
   "license": "MIT",
   "author": {
-    "name": "Ryan Sonshine",
-    "email": "ryansonshine@users.noreply.github.com",
-    "url": "https://github.com/ryansonshine"
+    "name": "Bohdan Kontsedal",
+    "email": "kontsedalbohdan@gmail.com",
+    "url": "https://github.com/kontsedal"
   },
   "engines": {
     "node": ">=12.0"
@@ -43,9 +43,8 @@
     "codecov"
   ],
   "bugs": {
-    "url": "https://github.com/ryansonshine/typescript-npm-package-template/issues"
+    "url": "https://github.com/kontsedal/buba/issues"
   },
-  "homepage": "https://github.com/ryansonshine/typescript-npm-package-template#readme",
   "devDependencies": {
     "@ryansonshine/commitizen": "^4.2.8",
     "@ryansonshine/cz-conventional-changelog": "^3.3.4",
