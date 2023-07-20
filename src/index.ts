@@ -19,35 +19,27 @@ type Dependency =
   | {
       type: DependencyType.VALUE;
       value: any;
-      valueType?: any;
     }
   | {
       type: DependencyType.CLASS;
       value: typeof DependentClass;
-      valueType?: any;
     }
   | {
       type: DependencyType.FACTORY;
       value: () => unknown;
-      valueType?: any;
     };
 
 export const asClass = (value: typeof DependentClass): Dependency => {
   return {
     type: DependencyType.CLASS,
     value: value,
-    valueType: value,
   };
 };
 
-export const asFactory = <T>(
-  value: () => T | Promise<T>,
-  valueType: unknown
-): Dependency => {
+export const asFactory = <T>(value: () => T | Promise<T>): Dependency => {
   return {
     type: DependencyType.FACTORY,
     value: value,
-    valueType: valueType,
   };
 };
 
@@ -55,7 +47,6 @@ export const asValue = (value: unknown): Dependency => {
   return {
     type: DependencyType.VALUE,
     value: value,
-    valueType: value,
   };
 };
 
@@ -63,7 +54,6 @@ export class Container {
   private id: number;
   private parentContainer?: Container;
   private registry: Map<any, any> = new Map();
-  private registerQueue: [any, Dependency][] = [];
   private resolvingDependencies: Map<any, boolean> = new Map();
   private forcedDependencies: Map<any, any> = new Map();
   constructor() {
@@ -73,24 +63,15 @@ export class Container {
     containerMap.set(this.id, this);
   }
 
-  register(name: unknown, dependency: Dependency): void {
-    if (dependency.type === DependencyType.VALUE) {
-      this.set(name, dependency.value);
-      return;
-    }
-    this.registerQueue.push([name, dependency]);
-  }
-
   set(name: unknown, value: unknown): void {
     if (this.registry.has(name)) {
-      throw new Error(`Dependency ${name as string} already registered`);
+      throw new Error(
+        `Dependency ${serializeDependencyName(
+          name as string
+        )} already registered`
+      );
     }
     this.registry.set(name, value);
-  }
-  async build(): Promise<void> {
-    for (const [name, value] of this.registerQueue) {
-      await this.resolve(name, value);
-    }
   }
 
   get<T>(name: unknown): T {
@@ -113,14 +94,16 @@ export class Container {
     }
     if (this.resolvingDependencies.get(name)) {
       throw new Error(
-        `Circular dependency detected for ${(name as string)?.toString()}`
+        `Circular dependency detected for ${serializeDependencyName(
+          name as string
+        )}`
       );
     }
     this.resolvingDependencies.set(name, true);
     if (typeof dependency.value === 'function') {
       if (hasDependencies(dependency.value)) {
         for (const innerDependency of dependency.value[DEPENDENCIES]) {
-          await this.resolve(innerDependency.valueType, innerDependency);
+          await this.resolve(innerDependency.value, innerDependency);
         }
       }
       if (dependency.type === DependencyType.FACTORY) {
@@ -172,5 +155,26 @@ export const container = (callback: (instance: Container) => unknown): void => {
 };
 
 export const dependency = <T>(value: unknown): T => {
-  return getContainer().get<T>(value);
+  const dependency = getContainer().get<T>(value);
+  if (!dependency) {
+    throw new Error(
+      `Dependency ${serializeDependencyName(value as string)} not found`
+    );
+  }
+  return dependency;
 };
+
+function serializeDependencyName(
+  value: string | ((...args: any[]) => unknown)
+) {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'function') {
+    return / (\w+)/.exec(value.toString())?.[1] || value.constructor.name;
+  }
+  if (typeof value === 'object') {
+    return JSON.stringify(value);
+  }
+  return (value as string)?.toString() || value;
+}
