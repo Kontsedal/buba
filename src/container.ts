@@ -10,20 +10,16 @@ import {
 
 const errorPrefix = '@kontsedal/buba error::: ';
 const asyncLocalStorage = new AsyncLocalStorage();
-const containerMap = new Map<number, Container>();
-let containerIdCounter = 0;
 
 export class Container {
-  private id: number;
   private parentContainer?: Container;
   private registry: Map<any, any> = new Map();
   private resolvingDependencies: Map<any, boolean> = new Map();
   private forcedDependencies: Map<any, any> = new Map();
   constructor() {
-    this.id = containerIdCounter++;
-    const parentContainerId = asyncLocalStorage.getStore() as number;
-    this.parentContainer = containerMap.get(parentContainerId);
-    containerMap.set(this.id, this);
+    this.parentContainer = asyncLocalStorage.getStore() as
+      | Container
+      | undefined;
   }
 
   set(name: unknown, value: unknown): void {
@@ -106,15 +102,14 @@ export class Container {
   }
 
   run<T>(fn: () => T): T {
-    return asyncLocalStorage.run(this.id, () => {
+    return asyncLocalStorage.run(this, () => {
       return fn();
     });
   }
 }
 
 export const getContainer = (): Container => {
-  const containerId = asyncLocalStorage.getStore() as number;
-  const container = containerMap.get(containerId);
+  const container = asyncLocalStorage.getStore() as Container | undefined;
   if (!container) {
     throw new Error(`${errorPrefix}Container not found`);
   }
