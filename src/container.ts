@@ -22,7 +22,7 @@ export class Container {
       | undefined;
   }
 
-  set(name: unknown, value: unknown): void {
+  set(name: Dependency, value: unknown): void {
     if (this.registry.has(name)) {
       throw new Error(
         `${errorPrefix}Dependency ${serializeDependencyName(
@@ -46,59 +46,58 @@ export class Container {
     this.forcedDependencies.set(name, value);
   }
 
-  async resolve<T>(name: unknown, dependency: Dependency): Promise<T> {
+  async resolve<T>(dependency: Dependency): Promise<T> {
     const resolveWithMetadata = async (
-      name: unknown,
       dependency: Dependency,
       callTree: any[]
     ) => {
-      const existing = this.get<T>(name);
+      const existing = this.get<T>(dependency);
       if (existing) {
         return existing;
       }
-      if (this.resolvingDependencies.get(name)) {
+      if (this.resolvingDependencies.get(dependency)) {
         throw new Error(
           `${errorPrefix}Circular dependency detected. Call tree: ${serializeCallTree(
-            callTree.concat([name])
+            callTree.concat([dependency])
           )}`
         );
       }
-      this.resolvingDependencies.set(name, true);
-      if (typeof dependency === 'function') {
+      this.resolvingDependencies.set(dependency, true);
+      if (isDependentClass(dependency) || isDependentFactory(dependency)) {
         if (hasDependencies(dependency)) {
           for (const innerDependency of getDependencies(dependency)) {
-            await resolveWithMetadata(innerDependency, innerDependency, [
+            await resolveWithMetadata(innerDependency, [
               ...callTree,
-              name,
+              dependency,
             ]);
           }
         }
         if (isDependentFactory(dependency)) {
           const value = (await dependency()) as T;
-          this.set(name, value);
-          this.resolvingDependencies.set(name, false);
+          this.set(dependency, value);
+          this.resolvingDependencies.set(dependency, false);
           return value;
         }
         if (isDependentClass(dependency)) {
           const value = new dependency() as T;
-          this.set(name, value);
-          this.resolvingDependencies.set(name, false);
+          this.set(dependency, value);
+          this.resolvingDependencies.set(dependency, false);
           return value;
         }
         throw new Error(
           `${errorPrefix}Unknown dependency type. Call tree: ${serializeCallTree(
-            callTree.concat([name])
+            callTree.concat([dependency])
           )}`
         );
       } else {
         throw new Error(
           `${errorPrefix}Attempt to resolve non registered plain value. Call tree: ${serializeCallTree(
-            callTree.concat([name])
+            callTree.concat([dependency])
           )}`
         );
       }
     };
-    return resolveWithMetadata(name, dependency, []);
+    return resolveWithMetadata(dependency, []);
   }
 
   run<T>(fn: () => T): T {
