@@ -1,4 +1,5 @@
 export const DEPENDENCIES = Symbol('DEPENDENCIES');
+
 export const TYPE = Symbol('TYPE');
 export enum DependencyType {
   CLASS = 'class',
@@ -7,19 +8,34 @@ export enum DependencyType {
 
 export type DependentClass = {
   new (...args: unknown[]): any;
-  [DEPENDENCIES]?: Dependency[];
+  [DEPENDENCIES]: Dependency[];
   [TYPE]: DependencyType;
 };
 
 export type DependentFactory = {
   (...args: unknown[]): unknown;
-  [DEPENDENCIES]?: Dependency[];
+  [DEPENDENCIES]: Dependency[];
   [TYPE]: DependencyType;
 };
 
 type DependencyHolder = DependentFactory | DependentClass;
 
-export type Dependency = DependentFactory | DependentClass | string | symbol;
+export type Dependency =
+  | DependentFactory
+  | DependentClass
+  | string
+  | symbol
+  | number
+  | boolean
+  | null
+  | object;
+
+declare global {
+  interface Function {
+    [DEPENDENCIES]: Dependency[];
+    [TYPE]: DependencyType;
+  }
+}
 
 export function hasDependencies(value: unknown): value is DependencyHolder {
   return Boolean((value as DependentClass)?.[DEPENDENCIES]);

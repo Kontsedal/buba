@@ -1,28 +1,37 @@
-import { container, DependencyType, DependentFactory, TYPE } from '../src';
-import { DEPENDENCIES, dependency } from '../src';
+import {
+  dependencyScope,
+  DependencyType,
+  TYPE,
+  getContainer,
+  DEPENDENCIES,
+  dependency,
+} from '../src';
 
 describe('buba', () => {
   it("should throw if plain value isn't registered for class", async () => {
-    await container(async instance => {
+    await dependencyScope(async () => {
+      const container = getContainer();
       class Example {
         static [DEPENDENCIES] = ['config'];
         static [TYPE] = DependencyType.CLASS;
       }
-      await expect(instance.resolve(Example)).rejects.toThrow();
+      await expect(container.resolve(Example)).rejects.toThrow();
     });
   });
 
   it("should throw if plain value isn't registered for factory", async () => {
-    await container(async instance => {
-      const createExample = (() => {}) as DependentFactory;
+    await dependencyScope(async () => {
+      const container = getContainer();
+      const createExample = () => {};
       createExample[DEPENDENCIES] = ['config'];
       createExample[TYPE] = DependencyType.FACTORY;
-      await expect(instance.resolve(createExample)).rejects.toThrow();
+      await expect(container.resolve(createExample)).rejects.toThrow();
     });
   });
 
   it('should inject plain value for class', async () => {
-    await container(async instance => {
+    await dependencyScope(async () => {
+      const container = getContainer();
       type Config = {
         URL: string;
       };
@@ -33,26 +42,27 @@ describe('buba', () => {
           return dependency<Config>('config').URL;
         }
       }
-      instance.set('config', { URL: 'https://example.com' });
-      const example = await instance.resolve<Example>(Example);
+      container.set('config', { URL: 'https://example.com' });
+      const example = await container.resolve(Example);
       expect(example.getUrl()).toBe('https://example.com');
     });
   });
 
   it('should inject plain value for factory', async () => {
-    await container(async instance => {
+    await dependencyScope(async () => {
+      const container = getContainer();
       type Config = {
         URL: string;
       };
-      const createExample = (() => {
+      const createExample = () => {
         return () => {
           return dependency<Config>('config').URL;
         };
-      }) as DependentFactory;
+      };
       createExample[DEPENDENCIES] = ['config'];
       createExample[TYPE] = DependencyType.FACTORY;
-      instance.set('config', { URL: 'https://example.com' });
-      const example = await instance.resolve<() => string>(createExample);
+      container.set('config', { URL: 'https://example.com' });
+      const example = await container.resolve(createExample);
       expect(example()).toBe('https://example.com');
     });
   });

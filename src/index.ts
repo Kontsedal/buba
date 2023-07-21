@@ -6,3 +6,4 @@ export {
   DependentFactory,
   DependentClass,
 } from './dependency';
+export { errorPrefix } from './constants';

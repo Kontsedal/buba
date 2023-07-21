@@ -2,13 +2,16 @@ import { AsyncLocalStorage } from 'async_hooks';
 import { serializeCallTree, serializeDependencyName } from './utils';
 import {
   Dependency,
+  DependentClass,
+  DependentFactory,
   getDependencies,
   hasDependencies,
   isDependentClass,
   isDependentFactory,
 } from './dependency';
+import { Class, Function } from 'ts-toolbelt';
+import { errorPrefix } from './constants';
 
-const errorPrefix = '@kontsedal/buba error::: ';
 const asyncLocalStorage = new AsyncLocalStorage();
 
 export class Container {
@@ -42,16 +45,29 @@ export class Container {
     );
   }
 
-  mock<T>(name: unknown, value: T): void {
+  mock<T>(name: T, value: unknown): void {
     this.forcedDependencies.set(name, value);
   }
 
-  async resolve<T>(dependency: Dependency): Promise<T> {
+  async resolve<T extends Dependency = Dependency>(
+    dependency: T
+  ): Promise<
+    T extends DependentClass
+      ? Class.Instance<T>
+      : T extends DependentFactory
+      ? Function.Return<T>
+      : unknown
+  > {
+    type ExpectedType = T extends DependentClass
+      ? Class.Instance<T>
+      : T extends DependentFactory
+      ? Function.Return<T>
+      : unknown;
     const resolveWithMetadata = async (
       dependency: Dependency,
       callTree: any[]
-    ) => {
-      const existing = this.get<T>(dependency);
+    ): Promise<ExpectedType> => {
+      const existing = this.get<ExpectedType>(dependency);
       if (existing) {
         return existing;
       }
@@ -73,13 +89,13 @@ export class Container {
           }
         }
         if (isDependentFactory(dependency)) {
-          const value = (await dependency()) as T;
+          const value = (await dependency()) as ExpectedType;
           this.set(dependency, value);
           this.resolvingDependencies.set(dependency, false);
           return value;
         }
         if (isDependentClass(dependency)) {
-          const value = new dependency() as T;
+          const value = new dependency() as ExpectedType;
           this.set(dependency, value);
           this.resolvingDependencies.set(dependency, false);
           return value;
@@ -115,12 +131,12 @@ export const getContainer = (): Container => {
   return container;
 };
 
-export const container = <T>(
-  callback: (instance: Container) => T | Promise<T>
+export const dependencyScope = <T>(
+  callback: () => T | Promise<T>
 ): Promise<T> => {
   const container = new Container();
   return container.run(async () => {
-    return callback(container);
+    return callback();
   });
 };
 
