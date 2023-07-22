@@ -68,18 +68,12 @@ export class Container {
         }
       }
       let value: ExpectedType | undefined;
-      if (dependencyUtils.isDependentObject(dependency)) {
-        value = dependency as ExpectedType;
-      } else if (dependencyUtils.isDependentClass(dependency)) {
+      if (dependencyUtils.isDependentClass(dependency)) {
         value = new dependency() as ExpectedType;
       } else if (dependencyUtils.isDependentFactory(dependency)) {
         value = (await dependency()) as ExpectedType;
       } else {
-        throw new Error(
-          `${errorPrefix}Attempt to resolve non object or constructable value. Call tree: ${dependencyUtils.serializeCallTree(
-            callTree.concat([dependency])
-          )}`
-        );
+        value = dependency as ExpectedType;
       }
       if (typeof value === 'undefined') {
         throw new Error(

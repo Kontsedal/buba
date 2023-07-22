@@ -11,26 +11,21 @@ function hasDependencies(
 ): value is DependentClass | DependentFactory | DependentObject {
   return Boolean((value as DependentClass)?.[DepsSymbol]);
 }
+
+function hasType(value: unknown): value is DependentClass | DependentFactory {
+  return Boolean((value as DependentClass)?.[TypeSymbol]);
+}
 function getDependencies(dependency: Dependency): Dependency[] {
   if (hasDependencies(dependency)) {
     return dependency[DepsSymbol] || [];
   }
   return [];
 }
-
-function isDependentObject(
-  dependency: Dependency
-): dependency is DependentObject {
-  return typeof dependency === 'object' && hasDependencies(dependency);
-}
-
 function isDependentClass(
   dependency: Dependency
 ): dependency is DependentClass {
   return (
-    hasDependencies(dependency) &&
-    !isDependentObject(dependency) &&
-    dependency?.[TypeSymbol] === DependencyType.CLASS
+    hasType(dependency) && dependency?.[TypeSymbol] === DependencyType.CLASS
   );
 }
 
@@ -38,9 +33,7 @@ function isDependentFactory(
   dependency: Dependency
 ): dependency is DependentFactory {
   return (
-    hasDependencies(dependency) &&
-    !isDependentObject(dependency) &&
-    dependency?.[TypeSymbol] === DependencyType.FACTORY
+    hasType(dependency) && dependency?.[TypeSymbol] === DependencyType.FACTORY
   );
 }
 
@@ -61,7 +54,6 @@ function serializeCallTree(callTree: Dependency[]): string {
 export const dependencyUtils = {
   hasDependencies,
   getDependencies,
-  isDependentObject,
   isDependentClass,
   isDependentFactory,
   serializeDependencyName,
