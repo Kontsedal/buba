@@ -1,68 +1,69 @@
-export const DEPENDENCIES = Symbol('DEPENDENCIES');
+import { DepsSymbol, DependencyType, TypeSymbol } from './constants';
+import {
+  Dependency,
+  DependentClass,
+  DependentFactory,
+  DependentObject,
+} from './types';
 
-export const TYPE = Symbol('TYPE');
-export enum DependencyType {
-  CLASS = 'class',
-  FACTORY = 'factory',
+function hasDependencies(
+  value: unknown
+): value is DependentClass | DependentFactory | DependentObject {
+  return Boolean((value as DependentClass)?.[DepsSymbol]);
 }
-
-export type DependentClass = {
-  new (...args: unknown[]): any;
-  [DEPENDENCIES]: Dependency[];
-  [TYPE]: DependencyType;
-};
-
-export type DependentFactory = {
-  (...args: unknown[]): unknown;
-  [DEPENDENCIES]: Dependency[];
-  [TYPE]: DependencyType;
-};
-
-type DependencyHolder = DependentFactory | DependentClass;
-
-export type Dependency =
-  | DependentFactory
-  | DependentClass
-  | string
-  | symbol
-  | number
-  | boolean
-  | null
-  | object;
-
-declare global {
-  interface Function {
-    [DEPENDENCIES]: Dependency[];
-    [TYPE]: DependencyType;
-  }
-}
-
-export function hasDependencies(value: unknown): value is DependencyHolder {
-  return Boolean((value as DependentClass)?.[DEPENDENCIES]);
-}
-
-export function getDependencies(dependency: Dependency): Dependency[] {
-  if (typeof dependency === 'string' || typeof dependency === 'symbol') {
-    return [];
-  }
+function getDependencies(dependency: Dependency): Dependency[] {
   if (hasDependencies(dependency)) {
-    return dependency[DEPENDENCIES] || [];
+    return dependency[DepsSymbol] || [];
   }
   return [];
 }
 
-export function isDependentClass(
+function isDependentObject(
+  dependency: Dependency
+): dependency is DependentObject {
+  return typeof dependency === 'object' && hasDependencies(dependency);
+}
+
+function isDependentClass(
   dependency: Dependency
 ): dependency is DependentClass {
   return (
-    hasDependencies(dependency) && dependency?.[TYPE] === DependencyType.CLASS
+    hasDependencies(dependency) &&
+    !isDependentObject(dependency) &&
+    dependency?.[TypeSymbol] === DependencyType.CLASS
   );
 }
 
-export function isDependentFactory(
+function isDependentFactory(
   dependency: Dependency
 ): dependency is DependentFactory {
   return (
-    hasDependencies(dependency) && dependency?.[TYPE] === DependencyType.FACTORY
+    hasDependencies(dependency) &&
+    !isDependentObject(dependency) &&
+    dependency?.[TypeSymbol] === DependencyType.FACTORY
   );
 }
+
+function serializeDependencyName(value: Dependency): string {
+  if (typeof value === 'function') {
+    return / (\w+)/.exec(value.toString())?.[1] || value.constructor.name;
+  }
+  if (typeof value === 'object') {
+    return JSON.stringify(value);
+  }
+  return (value as string)?.toString() || value;
+}
+
+function serializeCallTree(callTree: Dependency[]): string {
+  return callTree.map(serializeDependencyName).join(' -> ');
+}
+
+export const dependencyUtils = {
+  hasDependencies,
+  getDependencies,
+  isDependentObject,
+  isDependentClass,
+  isDependentFactory,
+  serializeDependencyName,
+  serializeCallTree,
+};

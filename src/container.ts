@@ -1,16 +1,7 @@
 import { AsyncLocalStorage } from 'async_hooks';
-import { serializeCallTree, serializeDependencyName } from './utils';
-import {
-  Dependency,
-  DependentClass,
-  DependentFactory,
-  getDependencies,
-  hasDependencies,
-  isDependentClass,
-  isDependentFactory,
-} from './dependency';
-import { Class, Function } from 'ts-toolbelt';
+import { dependencyUtils } from './dependency';
 import { errorPrefix } from './constants';
+import { Dependency, ResolvedDependency } from './types';
 
 const asyncLocalStorage = new AsyncLocalStorage();
 
@@ -25,11 +16,11 @@ export class Container {
       | undefined;
   }
 
-  set(name: Dependency, value: unknown): void {
+  set(name: Dependency, value: Dependency): void {
     if (this.registry.has(name)) {
       throw new Error(
-        `${errorPrefix}Dependency ${serializeDependencyName(
-          name as string
+        `${errorPrefix}Dependency ${dependencyUtils.serializeDependencyName(
+          name
         )} already registered`
       );
     }
@@ -51,21 +42,11 @@ export class Container {
 
   async resolve<T extends Dependency = Dependency>(
     dependency: T
-  ): Promise<
-    T extends DependentClass
-      ? Class.Instance<T>
-      : T extends DependentFactory
-      ? Function.Return<T>
-      : unknown
-  > {
-    type ExpectedType = T extends DependentClass
-      ? Class.Instance<T>
-      : T extends DependentFactory
-      ? Function.Return<T>
-      : unknown;
+  ): Promise<ResolvedDependency<T>> {
+    type ExpectedType = ResolvedDependency<T>;
     const resolveWithMetadata = async (
       dependency: Dependency,
-      callTree: any[]
+      callTree: Dependency[]
     ): Promise<ExpectedType> => {
       const existing = this.get<ExpectedType>(dependency);
       if (existing) {
@@ -73,45 +54,45 @@ export class Container {
       }
       if (this.resolvingDependencies.get(dependency)) {
         throw new Error(
-          `${errorPrefix}Circular dependency detected. Call tree: ${serializeCallTree(
+          `${errorPrefix}Circular dependency detected. Call tree: ${dependencyUtils.serializeCallTree(
             callTree.concat([dependency])
           )}`
         );
       }
       this.resolvingDependencies.set(dependency, true);
-      if (isDependentClass(dependency) || isDependentFactory(dependency)) {
-        if (hasDependencies(dependency)) {
-          for (const innerDependency of getDependencies(dependency)) {
-            await resolveWithMetadata(innerDependency, [
-              ...callTree,
-              dependency,
-            ]);
-          }
+      if (dependencyUtils.hasDependencies(dependency)) {
+        for (const innerDependency of dependencyUtils.getDependencies(
+          dependency
+        )) {
+          await resolveWithMetadata(innerDependency, [...callTree, dependency]);
         }
-        if (isDependentFactory(dependency)) {
-          const value = (await dependency()) as ExpectedType;
-          this.set(dependency, value);
-          this.resolvingDependencies.set(dependency, false);
-          return value;
-        }
-        if (isDependentClass(dependency)) {
-          const value = new dependency() as ExpectedType;
-          this.set(dependency, value);
-          this.resolvingDependencies.set(dependency, false);
-          return value;
-        }
-        throw new Error(
-          `${errorPrefix}Unknown dependency type. Call tree: ${serializeCallTree(
-            callTree.concat([dependency])
-          )}`
-        );
+      }
+      let value: ExpectedType | undefined;
+      if (dependencyUtils.isDependentObject(dependency)) {
+        value = dependency as ExpectedType;
+      } else if (dependencyUtils.isDependentClass(dependency)) {
+        value = new dependency() as ExpectedType;
+      } else if (dependencyUtils.isDependentFactory(dependency)) {
+        value = (await dependency()) as ExpectedType;
       } else {
         throw new Error(
-          `${errorPrefix}Attempt to resolve non registered plain value. Call tree: ${serializeCallTree(
+          `${errorPrefix}Attempt to resolve non object or constructable value. Call tree: ${dependencyUtils.serializeCallTree(
             callTree.concat([dependency])
           )}`
         );
       }
+      if (typeof value === 'undefined') {
+        throw new Error(
+          `${errorPrefix}Dependency ${dependencyUtils.serializeDependencyName(
+            dependency
+          )} resolved to undefined. Call tree: ${dependencyUtils.serializeCallTree(
+            callTree.concat([dependency])
+          )}`
+        );
+      }
+      this.set(dependency, value);
+      this.resolvingDependencies.set(dependency, false);
+      return value;
     };
     return resolveWithMetadata(dependency, []);
   }
@@ -131,23 +112,35 @@ export const getContainer = (): Container => {
   return container;
 };
 
-export const dependencyScope = <T>(
-  callback: () => T | Promise<T>
-): Promise<T> => {
+export const scope = <T>(callback: () => T | Promise<T>): Promise<T> => {
   const container = new Container();
   return container.run(async () => {
     return callback();
   });
 };
 
-export const dependency = <T>(value: unknown): T => {
-  const dependency = getContainer().get<T>(value);
+export const getDep = <T extends Dependency>(
+  value: T
+): ResolvedDependency<T> => {
+  const dependency = getContainer().get<ResolvedDependency<T>>(value);
   if (!dependency) {
     throw new Error(
-      `${errorPrefix}Dependency ${serializeDependencyName(
-        value as string
+      `${errorPrefix}Dependency ${dependencyUtils.serializeDependencyName(
+        value
       )} not found`
     );
   }
   return dependency;
+};
+
+export const setDep = <T extends Dependency>(name: T, value: T) => {
+  getContainer().set(name, value);
+};
+
+export const mockDep = <T extends Dependency>(name: T, value: T) => {
+  getContainer().mock(name, value);
+};
+
+export const resolveDep = <T extends Dependency>(name: T) => {
+  return getContainer().resolve(name);
 };
